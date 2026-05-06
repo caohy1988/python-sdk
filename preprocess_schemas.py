@@ -399,6 +399,63 @@ def generate_variants(path, schema, ops, global_variant_requirements):
 # --- Global Normalization ---
 
 
+def lift_capability_extension_defs(schema, file_stem):
+    """Lift `$defs[<reverse.domain.key>]/{platform,business}_schema` to top-level.
+
+    Capability-extension files (e.g. identity_linking.json, fulfillment.json)
+    nest their typed schemas under a reverse-domain `$defs` key, e.g.
+
+        $defs:
+          dev.ucp.common.identity_linking:
+            platform_schema: {...}
+            business_schema: {...}
+
+    The dotted key is not a valid Python identifier, so datamodel-codegen
+    can't reach the inner schemas and emits only a `RootModel[Any]` wrapper
+    for the file root. This loses the typed `config.scopes` / `scope_policy`
+    surface that downstream consumers need.
+
+    Lift each `platform_schema` / `business_schema` child into top-level
+    `$defs` with a `{file_stem}_{child}` name, then remove the dotted-key
+    holder, then add a root-level `oneOf` so codegen anchors on something
+    walkable. Capability-extension schemas have no external `$ref` pointing
+    into the dotted-key path (verified across `ucp/source/schemas`), so
+    removing the holder is safe.
+
+    Schema-extension entries with `allOf`-style payload (e.g. fulfillment's
+    `dev.ucp.shopping.checkout`) are left untouched — codegen already
+    produces typed classes for those via the deeply-nested module path.
+    """
+    defs = schema.get("$defs")
+    if not isinstance(defs, dict):
+        return
+    # Iterate over a fixed tuple so generated diffs are stable across
+    # Python hash seeds. set ordering used to leak the seed into codegen.
+    lifted = {}
+    drop_keys = []
+    for key, value in defs.items():
+        if "." not in key or not isinstance(value, dict):
+            continue
+        matched = False
+        for child_name in ("platform_schema", "business_schema"):
+            child_value = value.get(child_name)
+            if not isinstance(child_value, dict):
+                continue
+            new_name = f"{file_stem}_{child_name}"
+            lifted[new_name] = child_value
+            matched = True
+        if matched:
+            drop_keys.append(key)
+    if not lifted:
+        return
+    for key in drop_keys:
+        defs.pop(key, None)
+    defs.update(lifted)
+    # Anchor the file root on the lifted schemas so codegen produces
+    # typed classes rather than RootModel[Any].
+    schema["oneOf"] = [{"$ref": f"#/$defs/{name}"} for name in lifted]
+
+
 def normalize_metadata_schemas(schemas, target_dir):
     """
     Ensures ucp.json has a root union and other files point to it generically.
@@ -416,6 +473,7 @@ def normalize_metadata_schemas(schemas, target_dir):
                 "response_checkout_schema",
                 "response_order_schema",
                 "response_cart_schema",
+                "response_catalog_schema",
             ]
         ]
 
@@ -530,6 +588,7 @@ def main():
     for p_abs, s in schemas.items():
         if "ucp.json" in p_abs or "_request.json" in p_abs:
             continue
+        lift_capability_extension_defs(s, Path(p_abs).stem)
         preprocess_full_schema(s, entity_def)
         # Write back the flattened core schema
         save_json(s, Path(p_abs))
