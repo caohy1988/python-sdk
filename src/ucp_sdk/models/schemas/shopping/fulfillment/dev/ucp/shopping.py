@@ -18,13 +18,21 @@
 
 from __future__ import annotations
 
-from typing import Any
+from pydantic import ConfigDict
 
-from pydantic import ConfigDict, RootModel
+from ....checkout import Checkout as Checkout_1
+from ... import Fulfillment
 
 
-class Fulfillment(RootModel[Any]):
+class Checkout(Checkout_1):
+    """
+    Checkout extended with hierarchical fulfillment.
+    """
+
     model_config = ConfigDict(
-        frozen=True,
+        extra="allow",
     )
-    root: Any
+    fulfillment: Fulfillment | None = None
+    """
+    Fulfillment details.
+    """

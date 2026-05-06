@@ -18,28 +18,18 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import ConfigDict, Field, RootModel
 
-from ..checkout import Checkout as Checkout_1
-from ..types import fulfillment as fulfillment_1
+from ...capability import BusinessSchema, PlatformSchema
 from ..types import (
+    business_fulfillment_config,
+    fulfillment,
     fulfillment_available_method,
     fulfillment_group,
     fulfillment_method,
     fulfillment_option,
+    platform_fulfillment_config,
 )
-
-
-class FulfillmentExtension(RootModel[Any]):
-    model_config = ConfigDict(
-        frozen=True,
-    )
-    root: Any = Field(..., title="Fulfillment Extension")
-    """
-    Extends Checkout with fulfillment support using methods, destinations, and groups.
-    """
 
 
 class FulfillmentAvailableMethod(
@@ -49,6 +39,48 @@ class FulfillmentAvailableMethod(
         frozen=True,
     )
     root: fulfillment_available_method.FulfillmentAvailableMethod
+
+
+class FulfillmentPlatformSchema(PlatformSchema):
+    """
+    Platform-level fulfillment capability configuration
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    config: platform_fulfillment_config.PlatformFulfillmentConfig | None = None
+    """
+    Platform fulfillment configuration
+    """
+
+
+class FulfillmentBusinessSchema(BusinessSchema):
+    """
+    Business-level fulfillment capability configuration
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+    )
+    config: business_fulfillment_config.BusinessFulfillmentConfig | None = None
+    """
+    Business fulfillment configuration
+    """
+
+
+class FulfillmentExtension(
+    RootModel[FulfillmentPlatformSchema | FulfillmentBusinessSchema]
+):
+    model_config = ConfigDict(
+        frozen=True,
+    )
+    root: FulfillmentPlatformSchema | FulfillmentBusinessSchema = Field(
+        ..., title="Fulfillment Extension"
+    )
+    """
+    Extends Checkout with fulfillment support using methods, destinations, and groups.
+    """
 
 
 class FulfillmentOption(RootModel[fulfillment_option.FulfillmentOption]):
@@ -72,22 +104,8 @@ class FulfillmentMethod(RootModel[fulfillment_method.FulfillmentMethod]):
     root: fulfillment_method.FulfillmentMethod
 
 
-class Fulfillment(RootModel[fulfillment_1.Fulfillment]):
+class Fulfillment(RootModel[fulfillment.Fulfillment]):
     model_config = ConfigDict(
         frozen=True,
     )
-    root: fulfillment_1.Fulfillment
-
-
-class Checkout(Checkout_1):
-    """
-    Checkout extended with hierarchical fulfillment.
-    """
-
-    model_config = ConfigDict(
-        extra="allow",
-    )
-    fulfillment: Fulfillment | None = None
-    """
-    Fulfillment details.
-    """
+    root: fulfillment.Fulfillment
